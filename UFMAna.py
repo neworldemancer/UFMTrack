@@ -60,7 +60,9 @@ cols_3exp_1a = [cp_s2[1], cp_s2[2], cp_s2[6], cp_s2[4]]
 cp_3exp_1a = sns.color_palette(cols_3exp_1a)
 sns.set_palette(cp_3t_a)
 
+annot_test = 'Mann-Whitney'  # 't-test_ind'
 
+spacer_plot = ''  #  or '\n\n'
 # # General utility methods
 def path_safe_str(s):
     return s.replace('$', '').replace('\\', '').replace('/', ' per ')
@@ -75,7 +77,7 @@ def sc(show=True):
 def ssc(name, root=None, show=True):
     name = path_safe_str(name)
     p = name if root is None else os.path.join(root, name)
-
+    
     extensions = ['.png', '.pdf']
     for ext in extensions:
         plt.savefig(p + ext)
@@ -653,11 +655,12 @@ def plot_phf_detachment_rate(condition_id_to_condition_name, condition_id_to_ds_
 
     types = list(set(plot_dict['type']))
     pairs = [(p1, p2) for i, p1 in enumerate(types[:-1]) for j, p2 in enumerate(types[i + 1:])]
-
-    annotator = Annotator(plt.gca(), pairs, data=plot_dict, x='type', y='det_frac', )
-    annotator.configure(test='t-test_ind', text_format='star',
-                        loc='inside')
-    annotator.apply_and_annotate()
+    
+    if len(pairs)>0:
+        annotator = Annotator(plt.gca(), pairs, data=plot_dict, x='type', y='det_frac', )
+        annotator.configure(test=annot_test, text_format='star',
+                            loc='inside')
+        annotator.apply_and_annotate()
 
     ax.set_title(
         f'Fraction of cells detached after flow increase (<=tf{t_acc_complete}),\
@@ -670,8 +673,10 @@ def plot_neighbour_tracks_info(tas, save_dir='.\\ds_plot', filename='track_neigh
     n_plots_per_page = 5
     n_plots = len(tas)
     keys = list(tas.keys())
-
-    fn = os.path.join(save_dir, filename + f'_{keys}.pdf')
+    
+    keys_s = keys if len(keys)<6 else f'[{keys[0]}..{keys[-1]}]'
+    
+    fn = os.path.join(save_dir, filename + f'_{keys_s}.pdf')
     with PdfPages(fn) as pdf:
         for page in range((n_plots + n_plots_per_page - 1) // n_plots_per_page):
             page_keys = keys[page * n_plots_per_page: (page + 1) * n_plots_per_page]
@@ -895,7 +900,7 @@ class TrackAnalyzer:
         TrackAnalyzer._diapedesis_profile = {}
         TrackAnalyzer._diapedesis_error_t = set()
 
-    def __init__(self, track: Track, tf_min=cfgm.T_ACCUMULATION_COMPLETE,
+    def __init__(self, track: Track, tf_min=None,
                  tf_max=189, n_min=6,
                  max_displ_dt=20,
                  crawling_speed_min=0.15,  # per tf, i.e. 0.15um/10s * 6(10s/min)=0.9um
@@ -910,7 +915,10 @@ class TrackAnalyzer:
                  ):
         if (track.__class__ is not TrackAnalyzer and not forse_ta) and track.is_nc():
             raise ValueError('Pure NC tracks not accepted here')
-
+        
+        if tf_min is None:
+            tf_min = cfgm.T_ACCUMULATION_COMPLETE
+        
         self.ds_id = -1
         # cell sequence
         self.all_nodes = []  # in valid time range
@@ -2807,7 +2815,7 @@ def plot_motility_comparisson_regime(analysis_dict, regime_sid, mode, stat):
             pairs = [(p1, p2) for i, p1 in enumerate(types[:-1]) for j, p2 in enumerate(types[i + 1:])]
 
             ax_ij.set(ylabel=param_name, xlabel='')
-            labels_formatted = [label.get_text() if i % 2 == 0 else '\n\n' + label.get_text() for
+            labels_formatted = [label.get_text() if i % 2 == 0 else spacer_plot + label.get_text() for
                                 i, label in enumerate(ax_ij.xaxis.get_majorticklabels())]
             ax_ij.set_xticklabels(labels_formatted)
 
@@ -2818,7 +2826,7 @@ def plot_motility_comparisson_regime(analysis_dict, regime_sid, mode, stat):
 
             if stat:
                 annotator = Annotator(ax_ij, pairs, data=plot_df, x='group', y='val', verbose=False)
-                annotator.configure(test='t-test_ind', text_format='star', loc='inside')
+                annotator.configure(test=annot_test, text_format='star', loc='inside')
                 annotator.apply_and_annotate()
         except Exception as ex:
             continue
@@ -2859,13 +2867,13 @@ def plot_acc_movement_comparisson(analysis_dict, mode, stat):
             pairs = [(p1, p2) for i, p1 in enumerate(types[:-1]) for j, p2 in enumerate(types[i + 1:])]
 
             ax_ij.set(ylabel=param_name, xlabel='')
-            labels_formatted = [label.get_text() if i % 2 == 0 else '\n\n' + label.get_text() for
+            labels_formatted = [label.get_text() if i % 2 == 0 else spacer_plot + label.get_text() for
                                 i, label in enumerate(ax_ij.xaxis.get_majorticklabels())]
             ax_ij.set_xticklabels(labels_formatted)
 
             if stat:
                 annotator = Annotator(ax_ij, pairs, data=plot_df, x='group', y='val', verbose=False)
-                annotator.configure(test='t-test_ind', text_format='star', loc='inside')
+                annotator.configure(test=annot_test, text_format='star', loc='inside')
                 annotator.apply_and_annotate()
         except Exception as ex:
             continue
@@ -2904,7 +2912,7 @@ def plot_behavior_distribution(analysis_dict):
 
             ax_ij.set_ylabel(param_name)
             ax_ij.set_xlabel('')
-            labels_formatted = [label.get_text() if i % 2 == 0 else '\n\n' + label.get_text() for
+            labels_formatted = [label.get_text() if i % 2 == 0 else spacer_plot + label.get_text() for
                                 i, label in enumerate(ax_ij.xaxis.get_majorticklabels())]
             ax_ij.set_xticklabels(labels_formatted)
 
@@ -2948,7 +2956,7 @@ def plot_stats_distribution(analysis_dict, mode, stat):
 
             ax_ij.set_ylabel(param_name)
             ax_ij.set_xlabel('')
-            labels_formatted = [label.get_text() if i % 2 == 0 else '\n\n' + label.get_text() for
+            labels_formatted = [label.get_text() if i % 2 == 0 else spacer_plot + label.get_text() for
                                 i, label in enumerate(ax_ij.xaxis.get_majorticklabels())]
             ax_ij.set_xticklabels(labels_formatted)
 
@@ -2961,7 +2969,7 @@ def plot_stats_distribution(analysis_dict, mode, stat):
 
             if stat:
                 annotator = Annotator(ax_ij, pairs, data=plot_df, x='group', y='val', verbose=False)
-                annotator.configure(test='t-test_ind', text_format='star', loc='inside')
+                annotator.configure(test=annot_test, text_format='star', loc='inside')
                 annotator.apply_and_annotate()
         except Exception as ex:
             continue
@@ -3051,8 +3059,11 @@ def proc_plot_track_info(all_tracks_fv, long_tracks_phf, long_tracks_fv_phf, all
                          plot_dir
                          ):
     os.makedirs(plot_dir, exist_ok=True)
-    plot_dataset_speed_distributions(long_tracks_fv_phf)
-    plot_tracks_datasets_all_vis({k: v for k, v in long_tracks_phf.items() if k not in skipped_ids})
+    
+    plot_dataset_speed_distributions(long_tracks_fv_phf, save_dir=plot_dir)
+    
+    long_tracks_phf_new = {k: v for k, v in long_tracks_phf.items() if k not in skipped_ids}
+    plot_tracks_datasets_all_vis(long_tracks_phf_new, save_dir=plot_dir)
 
     plot_datasets_att_det_distribution(ds_id_to_condition_id,
                                        condition_id_to_condition_name,
@@ -3081,7 +3092,7 @@ def proc_analyze_tracks(all_tracks_fv_phf, long_tracks_fv_phf, all_tracks_fv,
                         datasets_dir, plot_dir,
                         skip_processed=False, no_transm_mode=False):
     neighbour_effect_radius = cfgm.NEIGHBOR_TRACK_DIST  # um, neighbours search radius
-    prob_dr = cfgm.PROBING_MAX_DISPLACEMENT
+    
 
     # plot only aggregated info
     cls_not_a_cell = Classificator.load(cfgm.CLASSIFIER_NAC)  # 'not_a_cell_classifier_024.lrp'
@@ -3103,6 +3114,9 @@ def proc_analyze_tracks(all_tracks_fv_phf, long_tracks_fv_phf, all_tracks_fv,
             TrackAnalyzer.reset()
 
             tf_max = np.max([t.get_last_time() for t in trx] if len(trx) else [0])
+            
+            prob_dr = cfgm.PROBING_MAX_DISPLACEMENT * np.sqrt((tf_max - cfgm.T_ACCUMULATION_END + 1.) / (198-33))
+            print(f'used probing dr{prob_dr}')
 
             n_ok = 0
             eff = 0.

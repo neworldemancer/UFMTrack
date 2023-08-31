@@ -11,6 +11,8 @@ _T_ACCUMULATION_END = 4  # starts from 0
 _T_END_TO_COMPLETE = 5
 _T_ACCUMULATION_COMPLETE = _T_ACCUMULATION_END + _T_END_TO_COMPLETE
 
+_DT_OFFSET = 0  # offset timeframes to process from. Changes the resulting tracks timing. Default: starts from 0
+
 _DT = 10.  # sec, timestep between sequential timeframes
 
 _EXPECTED_NUM_AUX_CHANNELS = 8

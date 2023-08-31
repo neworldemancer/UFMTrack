@@ -320,11 +320,16 @@ class Cell:
     """
     _dt = cfgm.DT
 
+    _dt_offset = cfgm.DT_OFFSET
+
     def __init__(self, in_line: str):
         arr = in_line.split()
 
         # t idx M nM [list m-idxs], x, y, z, w, phi, ecc, [aux-channels]
-        self.t_idx = int(arr[0])
+        self.t_idx = int(arr[0]) - self._dt_offset
+        if self.t_idx < 0:
+            raise ValueError(f'negative t_idx={self.t_idx} in {in_line}. Skipping cell expected downstream.')
+
         self.t = self.t_idx * self._dt
         self.idx = int(arr[1])
         # is_m = int(arr[2])  # is multiple
@@ -475,9 +480,14 @@ def load_cells(file_name: str) -> tuple[dict[int, list[Cell]], dict[int, list[Ce
             if not s:
                 break
 
-            cell = Cell(s)
+            try:
+                cell = Cell(s)
+            except ValueError:
+                continue  # skip lines with time < cfgm.DT_OFFSET
+
             if cell.t_idx not in cells:
                 cells[cell.t_idx] = []
+
             assert (len(cells[cell.t_idx]) == cell.idx)
 
             cells[cell.t_idx].append(cell)
