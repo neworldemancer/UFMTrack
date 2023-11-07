@@ -1448,7 +1448,7 @@ def solve(n, m_arr, cells_r, fid_vol, links, links_w, w_nc, w_dm):
 
     # >>>>>>>>>>>>>>>
     solver.parameters.num_search_workers = cfgm.NUM_WORKERS
-    solver.parameters.max_time_in_seconds = 900  # 60 * 20
+    solver.parameters.max_time_in_seconds = cfgm.LINKING_SOLVER_TIMEOUT  # 60 * 15
 
     # solver.parameters.catch_sigint_signal = True
 
@@ -1593,7 +1593,7 @@ def solve_disjoint_cached(stack, links, links_w, w_nc, w_dm, use_cache):
             pickle.dump(resolved_links, f)
 
     t2 = time.time()
-    print('time spent = %.2fs' % (t2 - t1))
+    print('time spent solving disjoint = %.2fs' % (t2 - t1))
     return resolved_links
 
 
@@ -2789,11 +2789,13 @@ def solve_flow(vtx_w_nc_lr,
                segs_ends, segs_f_est, segs_f_hnt,
                psegs_ends, psegs_w,
                fid_vol,
-               w_nc, w_f_mult_end, w_f_above_est):
+               w_nc, w_f_mult_end, w_f_above_est, timeout_sec=None):
     if len(segs_ends) == 0:
         return [], []
 
     nodes = []
+    
+    timeout_sec = timeout_sec if timeout_sec is not None else cfgm.DEFAULT_SOLVER_TIMEOUT
 
     for idx, w_nc_lr in enumerate(vtx_w_nc_lr):
         node: NodeStruct_F = NodeStruct_F(idx, w_f_mult_end)
@@ -2849,7 +2851,7 @@ def solve_flow(vtx_w_nc_lr,
 
     # >>>>>>>>>>>>>>>
     solver.parameters.num_search_workers = cfgm.NUM_WORKERS
-    solver.parameters.max_time_in_seconds = 350  # 60 * 20
+    solver.parameters.max_time_in_seconds = timeout_sec
     # print('w', solver.parameters.num_search_workers)
     # print('a', solver.parameters.minimization_algorithm)
     # print('t', solver.parameters.max_time_in_seconds)
@@ -3312,7 +3314,7 @@ def solve_groups_global_flow_whole(stack, vtx_g, sgm_g, sgm_c, w_nc, w_f_mult_en
 
 
 # global solve flow (in disjoint groups):
-def solve_groups_global_flow(stack, vtx_g, sgm_g, sgm_gc, w_nc, w_f_mult_end, w_f_above_est):
+def solve_groups_global_flow(stack, vtx_g, sgm_g, sgm_gc, w_nc, w_f_mult_end, w_f_above_est, timeout_sec=None):
     fid_vol = stack.f_fid_vol()
     for grp_idx, (grp_vtx, grp_sgm, grp_sgmc) in enumerate(tqdm(zip(vtx_g, sgm_g, sgm_gc), desc='segment multiplicity global', ascii=True)):
         # print(grp_idx, '/', len(vtx_g), end='\r')
@@ -3361,7 +3363,7 @@ def solve_groups_global_flow(stack, vtx_g, sgm_g, sgm_gc, w_nc, w_f_mult_end, w_
         # print('n_vtx = %d' % len(vtx_w_nc_lr), 'n_segm = %d'%len(segs_ends), 'n_segm_p = %d'%len(psegs_ends))
 
         resolved_links, *_ = solve_flow(vtx_w_nc_lr, segs_ends, segs_f_est, segs_f_hnt, psegs_ends, psegs_w,
-                                        fid_vol, w_nc, w_f_mult_end, w_f_above_est
+                                        fid_vol, w_nc, w_f_mult_end, w_f_above_est, timeout_sec=timeout_sec
                                         )
 
         for link in resolved_links:
@@ -3397,26 +3399,33 @@ def remove_small_groups(vtx_g, sgm_g, sgm_c_g, all_starts_g, n_node_min=6):
 
 def shave_and_solve_groups_global_flow(stack, vtx_g, sgm_g, sgm_c_g):
     t1 = time.time()
-    n_grp = len(vtx_g)
-    for gr_idx, (grp_vtx, grp_sgm, grp_sgm_c) in enumerate(zip(vtx_g, sgm_g, sgm_c_g)):
-        print(f'group {gr_idx}/{n_grp}')
-        vtx_gi, sgm_gi, sgm_c_gi = [grp_vtx], [grp_sgm], [grp_sgm_c]
-        while True:
-            n_shaved_tot = shave_segments_g(vtx_gi, sgm_gi, sgm_c_gi)
-            if n_shaved_tot == 0:
-                break
-            print('\tshaved', n_shaved_tot)
+    if cfgm.SHAVING_SOLVER_TIMEOUT != 0 and cfgm.SHAVING_SOLVER_MAX_ITER != 0:
+        n_grp = len(vtx_g)
+        for gr_idx, (grp_vtx, grp_sgm, grp_sgm_c) in enumerate(zip(vtx_g, sgm_g, sgm_c_g)):
+            print(f'Shaving group {gr_idx}/{n_grp}')
+            vtx_gi, sgm_gi, sgm_c_gi = [grp_vtx], [grp_sgm], [grp_sgm_c]
 
-            solve_groups_global_flow(stack=stack,
-                                     vtx_g=vtx_gi, sgm_g=sgm_gi, sgm_gc=sgm_c_gi,
-                                     w_nc=cfgm.W_NC_GLOB,
-                                     w_f_mult_end=cfgm.W_F_MULT_END_GLOB_SHAVED,
-                                     w_f_above_est=cfgm.W_F_ABOVE_EST_GLOB)
+            itr_idx = -1
+            while True if cfgm.SHAVING_SOLVER_MAX_ITER == -1 else (itr_idx < cfgm.SHAVING_SOLVER_MAX_ITER):
+                itr_idx += 1
 
-            sgm_g[gr_idx], sgm_c_g[gr_idx] = sgm_gi[0], sgm_c_gi[0]
+                n_shaved_tot = shave_segments_g(vtx_gi, sgm_gi, sgm_c_gi)
+                if n_shaved_tot == 0:
+                    break
+                print('\tshaved', n_shaved_tot)
+
+                solve_groups_global_flow(stack=stack,
+                                         vtx_g=vtx_gi, sgm_g=sgm_gi, sgm_gc=sgm_c_gi,
+                                         w_nc=cfgm.W_NC_GLOB,
+                                         w_f_mult_end=cfgm.W_F_MULT_END_GLOB_SHAVED,
+                                         w_f_above_est=cfgm.W_F_ABOVE_EST_GLOB,
+                                         timeout_sec=cfgm.SHAVING_SOLVER_TIMEOUT
+                                         )
+
+                sgm_g[gr_idx], sgm_c_g[gr_idx] = sgm_gi[0], sgm_c_gi[0]
 
     t2 = time.time()
-    print('time spent = %.2fs' % (t2 - t1))
+    print('time spent shaving = %.2fs' % (t2 - t1))
     return sgm_g, sgm_c_g
 
 

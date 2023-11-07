@@ -74,6 +74,12 @@ _STD_REL_DW2 = 0.158  # std of ((w1-w2)/(w1+w2))^2
 _LINKS_MAX_DR = 15.
 _LINKS_EPS = 10.
 
+_LINKING_SOLVER_TIMEOUT = 900  # sec
+_DEFAULT_SOLVER_TIMEOUT = 350  # sec
+_SHAVING_SOLVER_TIMEOUT = 345  # sec
+
+_SHAVING_SOLVER_MAX_ITER = 3
+
 # fiducial area border attenuation constants for `_W_NC`
 _BORDER_ATT_DIST = 24.  # um
 _CELL_RADIUS = 10.  # um
