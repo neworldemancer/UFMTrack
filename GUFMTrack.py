@@ -205,7 +205,11 @@ def angle_3d(v1: Iterable[float], v2: Iterable[float]) -> float:
 
 
 def mean_std(arr: Sequence[float]) -> tuple[float, float]:
-    return (np.mean(arr), np.std(arr)) if len(arr) else (0, 0)
+    return (np.mean(arr), np.std(arr)) if len(arr) else (0., 0.)
+
+
+def min_max(arr: Sequence[float]) -> tuple[float, float]:
+    return (np.min(arr), np.max(arr)) if len(arr) else (0., 0.)
 
 
 def iterable(obj):
@@ -2382,7 +2386,7 @@ def plot_segments_in_groups(stack, groups_with_m_nodes,
     sgroups_with_m_nodes = set(groups_with_m_nodes) if groups_with_m_nodes is not None else None
     only_m_nodes = only_m_nodes and groups_with_m_nodes is not None
 
-    colors = ['k', 'b', 'g', 'y', 'orange', 'r']
+    colors = ['k', 'b', 'g', 'y', 'm', 'c']+['r']*100  # 100 colors for multiplicity>5, namely not resolvable, thus red
     for gr_idx in np.arange(len(vtx_g)):
         if only_m_nodes and gr_idx not in sgroups_with_m_nodes:
             continue
@@ -3316,6 +3320,7 @@ def solve_groups_global_flow_whole(stack, vtx_g, sgm_g, sgm_c, w_nc, w_f_mult_en
 # global solve flow (in disjoint groups):
 def solve_groups_global_flow(stack, vtx_g, sgm_g, sgm_gc, w_nc, w_f_mult_end, w_f_above_est, timeout_sec=None):
     fid_vol = stack.f_fid_vol()
+    success_g = []
     for grp_idx, (grp_vtx, grp_sgm, grp_sgmc) in enumerate(tqdm(zip(vtx_g, sgm_g, sgm_gc), desc='segment multiplicity global', ascii=True)):
         # print(grp_idx, '/', len(vtx_g), end='\r')
 
@@ -3379,7 +3384,12 @@ def solve_groups_global_flow(stack, vtx_g, sgm_g, sgm_gc, w_nc, w_f_mult_end, w_
                     grp_sgm[lnk_idx].flow_slv = f
                 elif link_type == 1:
                     grp_sgmc[lnk_idx].flow_slv = f
+
+        success = False if (len(resolved_links) == 0 and (len(segs_ends) + len(psegs_ends)) > 0) else True
+        success_g.append(success)
     print('')
+    # success if at least one segment is resolved when somethig was to be resolved for all groups
+    return all(success_g)
 
 
 def remove_small_groups(vtx_g, sgm_g, sgm_c_g, all_starts_g, n_node_min=6):
@@ -3414,13 +3424,32 @@ def shave_and_solve_groups_global_flow(stack, vtx_g, sgm_g, sgm_c_g):
                     break
                 print('\tshaved', n_shaved_tot)
 
-                solve_groups_global_flow(stack=stack,
-                                         vtx_g=vtx_gi, sgm_g=sgm_gi, sgm_gc=sgm_c_gi,
-                                         w_nc=cfgm.W_NC_GLOB,
-                                         w_f_mult_end=cfgm.W_F_MULT_END_GLOB_SHAVED,
-                                         w_f_above_est=cfgm.W_F_ABOVE_EST_GLOB,
-                                         timeout_sec=cfgm.SHAVING_SOLVER_TIMEOUT
-                                         )
+                res = False
+                # sort the segments in sgm_c_gi by weight, ascending order
+
+                sgm_c_gi0 = [sorted(sgm_c_gi[0], key=lambda sgm: sgm.w)]
+                n_seg_c = len(sgm_c_gi0[0])
+                for remove_worst_sgm_c_perc in [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]:
+                    if remove_worst_sgm_c_perc > 0:
+                        print(f'\nSolving failed. trying with removed {remove_worst_sgm_c_perc}% of ' +
+                              f'the worst segment candidates')
+
+                    n_seg_remaining = int(n_seg_c * (1 - remove_worst_sgm_c_perc / 100))
+                    sgm_c_gi = [sgm_c_gi0[0][:n_seg_remaining]]
+
+                    res = solve_groups_global_flow(stack=stack,
+                                                   vtx_g=vtx_gi, sgm_g=sgm_gi, sgm_gc=sgm_c_gi,
+                                                   w_nc=cfgm.W_NC_GLOB,
+                                                   w_f_mult_end=cfgm.W_F_MULT_END_GLOB_SHAVED,
+                                                   w_f_above_est=cfgm.W_F_ABOVE_EST_GLOB,
+                                                   timeout_sec=cfgm.SHAVING_SOLVER_TIMEOUT
+                                                   )
+
+                    if res:
+                        break  # if solved, stop here
+
+                if not res:
+                    print(f'\tgroup {gr_idx} not solved after {itr_idx} iterations during shaving (G3)')
 
                 sgm_g[gr_idx], sgm_c_g[gr_idx] = sgm_gi[0], sgm_c_gi[0]
 
@@ -3536,7 +3565,7 @@ def plot_seg_flow(vtx_g, sgm_g, sgm_c_g, all_starts_g, stack, all_tracks_start_t
 
 
 def plot_seg_flow_grp(grp_vtx, grp_sgm, grp_sgm_c, grp_starts, stack, all_tracks_start_tcidx, all_tracks_xyt, saveto=None, idx=0):
-    has_mflow = len(grp_vtx) > 300
+    has_mflow = False  # len(grp_vtx) > 300
 
     # colors = ['pink', 'blue', 'green', 'yellow', 'orange', 'red']
     colors = ['k', 'b', 'g', 'y', 'orange', 'r']
@@ -3624,14 +3653,21 @@ def plot_seg_flow_change_dist(sgm_g, saveto):
 def merge_selected_potential_segments(vtx_g, sgm_g, sgm_c_g, all_starts_g):
     skip_grps = set()
     for grp_idx, (grp_sgm, grp_sgm_c) in enumerate(zip(sgm_g, sgm_c_g)):
+        # get min and max flow segments in grp_sgm and in grp_sgm_c
+        f_gs = [sgm.flow_slv for sgm in grp_sgm]
+        f_gsc = [sgm.flow_slv for sgm in grp_sgm_c]
+
+        f_gs_r = min_max(f_gs)
+        f_gsc_r = min_max(f_gsc)
+
         grp_sgm.extend(grp_sgm_c)
 
         bad_grp = False
         try:
             for sgm in grp_sgm:
-                assert (sgm.flow_slv > 0)
+                assert (sgm.flow_slv > 0), f'sgm.flow_slv={sgm.flow_slv} > 0'
         except AssertionError as err:
-            print(err.args, 's')
+            print(err.args, f'sgm_g[{grp_idx}] flow range={f_gs_r}, sgm_c_g[{grp_idx}] flow range={f_gsc_r}')
             bad_grp = True
 
         if bad_grp:
@@ -8980,10 +9016,13 @@ def track_dataset(cells_filename='tr_cells_tmp.dat'):
 
     # solve
     # 1 solve
-    solve_groups_global_flow(stack=st_merged,
-                             vtx_g=vtx_g2, sgm_g=sgm_g2, sgm_gc=sgm_c_g2,
-                             w_nc=cfgm.W_NC_GLOB, w_f_mult_end=cfgm.W_F_MULT_END_GLOB,
-                             w_f_above_est=cfgm.W_F_ABOVE_EST_GLOB)
+    res = solve_groups_global_flow(stack=st_merged,
+                                   vtx_g=vtx_g2, sgm_g=sgm_g2, sgm_gc=sgm_c_g2,
+                                   w_nc=cfgm.W_NC_GLOB, w_f_mult_end=cfgm.W_F_MULT_END_GLOB,
+                                   w_f_above_est=cfgm.W_F_ABOVE_EST_GLOB)
+
+    if not res:
+        print('Global flow solving failed sor at least one group (G2)')
 
     # plot simplified segments, vtx on segments, v g2
     if cfgm.SAVE_IMS:

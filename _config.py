@@ -118,6 +118,8 @@ _TRACK_PRIORS = {
 }
 
 # Track analysis constants
+_TRACK_MIN_LEN_STAT = 6
+_TRACK_MIN_LEN_ANALYSIS = 30
 _NEIGHBOR_TRACK_DIST = 23.  # um
 _PROBING_MAX_DISPLACEMENT = 20.  # um
 _CLASSIFIER_NAC = 'not_a_cell_classifier_024.lrp'

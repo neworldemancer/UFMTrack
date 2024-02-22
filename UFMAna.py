@@ -3057,7 +3057,9 @@ def proc_resolve_xings(datasets_ids, datasets_dir,
     print(f'total merging time, {(t_1 - t_0):.1f} sec')
 
     # 2. select tracks
-    ok_tracks, long_tracks = filter_ok_long_tracks(resolved_tracks, n_nodes_ok=6, n_nodes_long=30)
+    ok_tracks, long_tracks = filter_ok_long_tracks(resolved_tracks,
+                                                   n_nodes_ok=cfgm.TRACK_MIN_LEN_STAT,
+                                                   n_nodes_long=cfgm.TRACK_MIN_LEN_ANALYSIS)
     (long_tracks_fv, all_tracks_fv,
      long_tracks_phf, long_tracks_fv_phf,
      all_tracks_phf, all_tracks_fv_phf) = filter_fv_physflow_tracks(ok_tracks, long_tracks)
@@ -3172,6 +3174,12 @@ def proc_analyze_tracks(all_tracks_fv_phf, long_tracks_fv_phf, all_tracks_fv,
             save_pckl(tas, tas_filename)
 
             print('dataset', ds_id, f'n_ok={n_ok}, n_tot={len(trx)}, n_long={len(trx_long)}, eff_long={eff}')
+            n_nac = np.sum((np.array(errs) & 2)>0)
+            n_diap_ineff = np.sum((np.array(errs) & 4)>0)
+            n_tr_ineff = np.sum((np.array(errs) & 8)>0)
+            n_det = np.sum((np.array(errs) & 16)>0)
+
+            print(f'err: n_nac={n_nac}, n_diap_ineff={n_diap_ineff}, n_tr_ineff={n_tr_ineff}, n_det={n_det}')
 
         tas_all[ds_id] = tas
 
