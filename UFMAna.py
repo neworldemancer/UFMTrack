@@ -319,14 +319,84 @@ def resolve_track_xings_datasets(datasets_ids, priors, path='.', skip_processed=
     skipped_ids = []
     for ds_id in datasets_ids:
         t_s = timer()
+        tracks_filename_sep_g = os.path.join(ds_path_tmpl % ds_id, 'merged_tracks_sep_g.pckl')
         tracks_filename = os.path.join(ds_path_tmpl % ds_id, 'merged_tracks.pckl')
+        failed_grps_idxs_filename = os.path.join(ds_path_tmpl % ds_id, 'failed_grps_idxs.pckl')
 
         if skip_processed and os.path.exists(tracks_filename):
             tracks = load_pckl(tracks_filename)
             skipped_ids.append(ds_id)
         else:
             l_st_merged, l_st_full, l_vtx_xg, l_sgm_xg, l_sgm_1g = load_svs(path=ds_path_tmpl % ds_id)
+
+            # standard: process all groups jointly
+            # xing2 = convert_to_xings(stack=l_st_full, vtx_xg=l_vtx_xg, sgm_xg=l_sgm_xg, sgm_1g=l_sgm_1g)
+            # slv = Solver(xing2)
+            # slv.solve(plot_state,
+            #           lap_only=True, priors_set=use_priors,
+            #           pm_mtr=None,
+            #           stop_after_init=False)  # , orig_tr_idx_map=tr_idx_map, orig_mu_sgm=tr_mu_sgm
+            #
+            # tracks = slv.tracks
+
+            #
+            # debug: process each group separately
+
+            # print sizes and types of l_st_full, l_vtx_xg, l_sgm_xg, l_sgm_1g
+            #for v, n in zip([l_vtx_xg, l_sgm_xg, l_sgm_1g], ['l_vtx_xg', 'l_sgm_xg', 'l_sgm_1g']):
+            #    print(n, len(v), type(v))
+
+            tracks = []
+
+            failed_grps_idxs = []
+
+            for gr_idx, (l_vtx_xg_i, l_sgm_xg_i, l_sgm_1g_i) in enumerate(zip(l_vtx_xg, l_sgm_xg, l_sgm_1g)):
+                print(f'\n  group {gr_idx} sizes: {len(l_vtx_xg_i)}, {len(l_sgm_xg_i)}, {len(l_sgm_1g_i)}')
+                xing_i = convert_to_xings(stack=l_st_full, vtx_xg=[l_vtx_xg_i], sgm_xg=[l_sgm_xg_i], sgm_1g=[l_sgm_1g_i])
+                slv = Solver(xing_i)
+
+                try:
+                    slv.solve(plot_state,
+                              lap_only=True, priors_set=use_priors,
+                              pm_mtr=None,
+                              stop_after_init=False)
+                    s_tracks = slv.tracks
+                except Exception as ex:
+                    print(f'Error in DS {ds_id} group {gr_idx}: {ex}')
+                    failed_grps_idxs.append(gr_idx)
+                    continue
+
+                for t in s_tracks:
+                    for seg in t.segments:
+                        dummy_gr_idx, seg_idx = seg.info
+                        seg.info = (gr_idx, seg_idx)
+
+                tracks.extend(slv.tracks)
+
+
+            for track in tracks:
+                track.set_ds_id(ds_id)
+
+                # fill in_fid_vol attribute according to the set boundary for current xing2
+                _ = track.contained_in_fiducial_volume()
+
+            # save tracks processed in individual groups
+            save_pckl(tracks, tracks_filename_sep_g)
+            # save failed groups indexes
+            save_pckl(failed_grps_idxs, failed_grps_idxs_filename)
+
+
+            l_st_merged, l_st_full, l_vtx_xg, l_sgm_xg, l_sgm_1g = load_svs(path=ds_path_tmpl % ds_id)
+
+            # standard: process all groups jointly after removing failed groups
             xing2 = convert_to_xings(stack=l_st_full, vtx_xg=l_vtx_xg, sgm_xg=l_sgm_xg, sgm_1g=l_sgm_1g)
+
+            # remove failed groups - empty lists
+            for container in [l_vtx_xg, l_sgm_xg, l_sgm_1g]:
+                for idx in failed_grps_idxs:
+                    assert type(container[idx]) == list
+                    container[idx] = []
+
             slv = Solver(xing2)
             slv.solve(plot_state,
                       lap_only=True, priors_set=use_priors,
@@ -335,12 +405,7 @@ def resolve_track_xings_datasets(datasets_ids, priors, path='.', skip_processed=
 
             tracks = slv.tracks
 
-            for track in tracks:
-                track.set_ds_id(ds_id)
-
-                # fill in_fid_vol attribute according to the set boundary for current xing2
-                _ = track.contained_in_fiducial_volume()
-
+            # save tracks processed jointly after removing failed groups
             save_pckl(tracks, tracks_filename)
 
         resolved_tracks[ds_id] = tracks

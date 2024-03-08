@@ -7984,6 +7984,7 @@ class Solver:
         lim = lim or Solver.max_chi2
         merged_some = False
         itr = 0
+        print(f'resolve_remaining_LAP: lim={lim}')
         while True:
             if not self.resolve_remaining_LAP_best(lim):
                 break
@@ -8056,6 +8057,7 @@ class Solver:
     def resolve_remaining_associations_LAP(self):
         merged_some = False
         itr = 0
+        print(f'resolve_remaining_associations_LAP')
         while True:
             if not self.resolve_remaining_associations_LAP_best():
                 break
@@ -8221,6 +8223,7 @@ class Solver:
             draw_t += timer()
 
         if remove_short:
+            print('removing short tracks')
             self.remove_short_tracks()
 
         draw_t -= timer()
