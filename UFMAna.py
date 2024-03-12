@@ -25,6 +25,7 @@ from enum import Enum
 
 from itertools import groupby
 import pandas as pd
+from tqdm import tqdm
 
 from scipy.ndimage import gaussian_filter1d as gauss_flt1d
 from scipy import optimize as opt
@@ -330,14 +331,25 @@ def resolve_track_xings_datasets(datasets_ids, priors, path='.', skip_processed=
             l_st_merged, l_st_full, l_vtx_xg, l_sgm_xg, l_sgm_1g = load_svs(path=ds_path_tmpl % ds_id)
 
             # standard: process all groups jointly
-            # xing2 = convert_to_xings(stack=l_st_full, vtx_xg=l_vtx_xg, sgm_xg=l_sgm_xg, sgm_1g=l_sgm_1g)
-            # slv = Solver(xing2)
-            # slv.solve(plot_state,
-            #           lap_only=True, priors_set=use_priors,
-            #           pm_mtr=None,
-            #           stop_after_init=False)  # , orig_tr_idx_map=tr_idx_map, orig_mu_sgm=tr_mu_sgm
-            #
-            # tracks = slv.tracks
+
+            solved_all = False
+            solved_all_wo_bad = False
+
+            try:
+                xing2 = convert_to_xings(stack=l_st_full, vtx_xg=l_vtx_xg, sgm_xg=l_sgm_xg, sgm_1g=l_sgm_1g)
+                slv = Solver(xing2)
+                slv.solve(plot_state,
+                          lap_only=True, priors_set=use_priors,
+                          pm_mtr=None,
+                          stop_after_init=False)  # , orig_tr_idx_map=tr_idx_map, orig_mu_sgm=tr_mu_sgm
+
+                tracks = slv.tracks
+                solved_all = True
+            except Exception as ex:
+                print(f'Error in DS {ds_id}: {ex}')
+                print(f'\nAttemptig to process groups separately...')
+
+
 
             #
             # debug: process each group separately
@@ -346,67 +358,77 @@ def resolve_track_xings_datasets(datasets_ids, priors, path='.', skip_processed=
             #for v, n in zip([l_vtx_xg, l_sgm_xg, l_sgm_1g], ['l_vtx_xg', 'l_sgm_xg', 'l_sgm_1g']):
             #    print(n, len(v), type(v))
 
-            tracks = []
+            if not solved_all:
+                tracks = []
 
-            failed_grps_idxs = []
+                failed_grps_idxs = []
 
-            for gr_idx, (l_vtx_xg_i, l_sgm_xg_i, l_sgm_1g_i) in enumerate(zip(l_vtx_xg, l_sgm_xg, l_sgm_1g)):
-                print(f'\n  group {gr_idx} sizes: {len(l_vtx_xg_i)}, {len(l_sgm_xg_i)}, {len(l_sgm_1g_i)}')
-                xing_i = convert_to_xings(stack=l_st_full, vtx_xg=[l_vtx_xg_i], sgm_xg=[l_sgm_xg_i], sgm_1g=[l_sgm_1g_i])
-                slv = Solver(xing_i)
+                for gr_idx, (l_vtx_xg_i, l_sgm_xg_i, l_sgm_1g_i) in tqdm(enumerate(zip(l_vtx_xg, l_sgm_xg, l_sgm_1g))):
+                    #print(f'\n  group {gr_idx} sizes: {len(l_vtx_xg_i)}, {len(l_sgm_xg_i)}, {len(l_sgm_1g_i)}')
+                    xing_i = convert_to_xings(stack=l_st_full, vtx_xg=[l_vtx_xg_i], sgm_xg=[l_sgm_xg_i], sgm_1g=[l_sgm_1g_i])
+                    slv = Solver(xing_i, log=False)
+
+                    try:
+                        slv.solve(plot_state,
+                                  lap_only=True, priors_set=use_priors,
+                                  pm_mtr=None,
+                                  stop_after_init=False)
+                        s_tracks = slv.tracks
+                    except Exception as ex:
+                        print(f'Error in DS {ds_id} group {gr_idx}: {ex}')
+                        failed_grps_idxs.append(gr_idx)
+                        continue
+
+                    for t in s_tracks:
+                        for seg in t.segments:
+                            dummy_gr_idx, seg_idx = seg.info
+                            seg.info = (gr_idx, seg_idx)
+
+                    tracks.extend(slv.tracks)
+
+
+                for track in tracks:
+                    track.set_ds_id(ds_id)
+
+                    # fill in_fid_vol attribute according to the set boundary for current xing2
+                    _ = track.contained_in_fiducial_volume()
+
+                # save tracks processed in individual groups
+                save_pckl(tracks, tracks_filename_sep_g)
+                # save failed groups indexes
+                save_pckl(failed_grps_idxs, failed_grps_idxs_filename)
+
+                print(f'\nAttempting solving without bad groups {failed_grps_idxs}...')
 
                 try:
+                    l_st_merged, l_st_full, l_vtx_xg, l_sgm_xg, l_sgm_1g = load_svs(path=ds_path_tmpl % ds_id)
+
+                    # standard simplified: process all groups jointly after removing failed groups
+                    # remove failed groups - empty lists
+                    for container in [l_vtx_xg, l_sgm_xg, l_sgm_1g]:
+                        for idx in failed_grps_idxs:
+                            assert type(container[idx]) == list
+                            container[idx] = []
+
+                    xing2 = convert_to_xings(stack=l_st_full, vtx_xg=l_vtx_xg, sgm_xg=l_sgm_xg, sgm_1g=l_sgm_1g)
+
+                    slv = Solver(xing2)
                     slv.solve(plot_state,
                               lap_only=True, priors_set=use_priors,
                               pm_mtr=None,
-                              stop_after_init=False)
-                    s_tracks = slv.tracks
+                              stop_after_init=False)  # , orig_tr_idx_map=tr_idx_map, orig_mu_sgm=tr_mu_sgm
+
+                    tracks = slv.tracks
+
+                    # save tracks processed jointly after removing failed groups
+                    save_pckl(tracks, tracks_filename)
+                    solved_all_wo_bad = True
                 except Exception as ex:
-                    print(f'Error in DS {ds_id} group {gr_idx}: {ex}')
-                    failed_grps_idxs.append(gr_idx)
-                    continue
+                    print(f'Error in DS {ds_id} without bad groups: {ex}')
 
-                for t in s_tracks:
-                    for seg in t.segments:
-                        dummy_gr_idx, seg_idx = seg.info
-                        seg.info = (gr_idx, seg_idx)
+            if not solved_all and not solved_all_wo_bad:
+                tracks = load_pckl(tracks_filename_sep_g)
 
-                tracks.extend(slv.tracks)
-
-
-            for track in tracks:
-                track.set_ds_id(ds_id)
-
-                # fill in_fid_vol attribute according to the set boundary for current xing2
-                _ = track.contained_in_fiducial_volume()
-
-            # save tracks processed in individual groups
-            save_pckl(tracks, tracks_filename_sep_g)
-            # save failed groups indexes
-            save_pckl(failed_grps_idxs, failed_grps_idxs_filename)
-
-
-            l_st_merged, l_st_full, l_vtx_xg, l_sgm_xg, l_sgm_1g = load_svs(path=ds_path_tmpl % ds_id)
-
-            # standard: process all groups jointly after removing failed groups
-            xing2 = convert_to_xings(stack=l_st_full, vtx_xg=l_vtx_xg, sgm_xg=l_sgm_xg, sgm_1g=l_sgm_1g)
-
-            # remove failed groups - empty lists
-            for container in [l_vtx_xg, l_sgm_xg, l_sgm_1g]:
-                for idx in failed_grps_idxs:
-                    assert type(container[idx]) == list
-                    container[idx] = []
-
-            slv = Solver(xing2)
-            slv.solve(plot_state,
-                      lap_only=True, priors_set=use_priors,
-                      pm_mtr=None,
-                      stop_after_init=False)  # , orig_tr_idx_map=tr_idx_map, orig_mu_sgm=tr_mu_sgm
-
-            tracks = slv.tracks
-
-            # save tracks processed jointly after removing failed groups
-            save_pckl(tracks, tracks_filename)
 
         resolved_tracks[ds_id] = tracks
 

@@ -7269,7 +7269,7 @@ class Solver:
 
     min_track_len = 6
 
-    def __init__(self, crossings: Xings):
+    def __init__(self, crossings: Xings, log=True):
         self.tracks: List[Track] = crossings.tracks
 
         self.tracks_orig = copy.deepcopy(self.tracks)
@@ -7282,6 +7282,8 @@ class Solver:
 
         self.orig_tr_idx_map = {}
         self.orig_mu_sgm = None
+
+        self.log = log
 
     def active_track_id(self, track_id):
         d_uid = self.tracks[0].uid
@@ -7332,26 +7334,30 @@ class Solver:
             #  print(key, [mu_pop, sigma2_pop, sigma2_inst])
 
         t2 = time.time()
-        print(f'filling priors: {(t2 - t1):.2f}s')
+        if self.log:
+            print(f'filling priors: {(t2 - t1):.2f}s')
 
     def init_pm(self, pm_mtr=None):
         if pm_mtr is not None:
             self.pm.mtr = copy.deepcopy(pm_mtr)
             return
-        print('init_pm:fill_incompatible...')
+        if self.log:
+            print('init_pm:fill_incompatible...')
         ts = []
 
         ts.append(time.time())
 
         self.pm.fill_incompatible(self.crossings)
-        print('init_pm:fill_prob...')
+        if self.log:
+            print('init_pm:fill_prob...')
 
         ts.append(time.time())
         self.pm.fill_prob()
 
         ts.append(time.time())
         ts = np.array(ts)
-        print('init_pm:done.', ts[1:] - ts[:-1])
+        if self.log:
+            print('init_pm:done.', ts[1:] - ts[:-1])
         # self.clip_pm()
         pass
 
@@ -7984,7 +7990,8 @@ class Solver:
         lim = lim or Solver.max_chi2
         merged_some = False
         itr = 0
-        print(f'resolve_remaining_LAP: lim={lim}')
+        if self.log:
+            print(f'resolve_remaining_LAP: lim={lim}')
         while True:
             if not self.resolve_remaining_LAP_best(lim):
                 break
@@ -8057,7 +8064,8 @@ class Solver:
     def resolve_remaining_associations_LAP(self):
         merged_some = False
         itr = 0
-        print(f'resolve_remaining_associations_LAP')
+        if self.log:
+            print(f'resolve_remaining_associations_LAP')
         while True:
             if not self.resolve_remaining_associations_LAP_best():
                 break
@@ -8190,7 +8198,8 @@ class Solver:
     def eval_mean_tr_len(self):
         tr_lens = [tr.get_num_nodes() for tr in self.tracks]
         n_mean = np.mean(tr_lens)
-        print(n_mean)
+        if self.log:
+            print(f'eval_mean_tr_len={n_mean}')
         # _ = plt.hist(tr_lens, 30)
         # plt.show()
 
@@ -8223,7 +8232,8 @@ class Solver:
             draw_t += timer()
 
         if remove_short:
-            print('removing short tracks')
+            if self.log:
+                print('removing short tracks')
             self.remove_short_tracks()
 
         draw_t -= timer()
@@ -8283,7 +8293,8 @@ class Solver:
 
         proc_t -= draw_t
 
-        print(f'proc time: {proc_t:.2f}s, draw time: {draw_t:.2f}s')
+        if self.log:
+            print(f'proc time: {proc_t:.2f}s, draw time: {draw_t:.2f}s')
 
 
 def plot_state(s: Solver, orig=False):
