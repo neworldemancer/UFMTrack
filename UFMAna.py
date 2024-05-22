@@ -349,10 +349,8 @@ def resolve_track_xings_datasets(datasets_ids, priors, path='.', skip_processed=
                 print(f'Error in DS {ds_id}: {ex}')
                 print(f'\nAttemptig to process groups separately...')
 
-
-
             #
-            # debug: process each group separately
+            # process each group separately
 
             # print sizes and types of l_st_full, l_vtx_xg, l_sgm_xg, l_sgm_1g
             #for v, n in zip([l_vtx_xg, l_sgm_xg, l_sgm_1g], ['l_vtx_xg', 'l_sgm_xg', 'l_sgm_1g']):
@@ -365,7 +363,8 @@ def resolve_track_xings_datasets(datasets_ids, priors, path='.', skip_processed=
 
                 for gr_idx, (l_vtx_xg_i, l_sgm_xg_i, l_sgm_1g_i) in tqdm(enumerate(zip(l_vtx_xg, l_sgm_xg, l_sgm_1g))):
                     #print(f'\n  group {gr_idx} sizes: {len(l_vtx_xg_i)}, {len(l_sgm_xg_i)}, {len(l_sgm_1g_i)}')
-                    xing_i = convert_to_xings(stack=l_st_full, vtx_xg=[l_vtx_xg_i], sgm_xg=[l_sgm_xg_i], sgm_1g=[l_sgm_1g_i])
+                    xing_i = convert_to_xings(stack=l_st_full,
+                                              vtx_xg=[l_vtx_xg_i], sgm_xg=[l_sgm_xg_i], sgm_1g=[l_sgm_1g_i])
                     slv = Solver(xing_i, log=False)
 
                     try:
@@ -386,6 +385,8 @@ def resolve_track_xings_datasets(datasets_ids, priors, path='.', skip_processed=
 
                     tracks.extend(slv.tracks)
 
+                common_boundary = Xings.get_boundary(tracks)
+                Xings.set_boundary(common_boundary)
 
                 for track in tracks:
                     track.set_ds_id(ds_id)
@@ -428,7 +429,6 @@ def resolve_track_xings_datasets(datasets_ids, priors, path='.', skip_processed=
 
             if not solved_all and not solved_all_wo_bad:
                 tracks = load_pckl(tracks_filename_sep_g)
-
 
         resolved_tracks[ds_id] = tracks
 
@@ -737,7 +737,10 @@ def plot_phf_detachment_rate(condition_id_to_condition_name, condition_id_to_ds_
                                      ]
 
         fractions = [det / att for att, det in zip(n_attached_before_acc_end, n_detached_before_acc_com) if att > 0]
-        fraction = np.sum(n_detached_before_acc_com) / np.sum(n_attached_before_acc_end)
+        n_det_sum = np.sum(n_detached_before_acc_com)
+        n_att_sum = np.sum(n_attached_before_acc_end)
+
+        fraction = n_det_sum / n_att_sum if n_att_sum > 0 else 0
 
         detached_fraction[cond_name] = fraction * 100
         detached_fraction_arr[cond_name] = [fi * 100 for fi in fractions]
@@ -754,11 +757,15 @@ def plot_phf_detachment_rate(condition_id_to_condition_name, condition_id_to_ds_
     plt.figure(figsize=(10, 7))
     sns.set(style="whitegrid")
 
-    ax = sns.barplot(x='type',
-                     y='det_frac',
-                     data=plot_dict, ci='sd')
-
     types = list(set(plot_dict['type']))
+
+    if len(types) != 0:
+        ax = sns.barplot(x='type',
+                         y='det_frac',
+                         data=plot_dict, ci='sd')
+    else:
+        ax = plt.gca()
+
     pairs = [(p1, p2) for i, p1 in enumerate(types[:-1]) for j, p2 in enumerate(types[i + 1:])]
     
     if len(pairs)>0:
@@ -2910,13 +2917,14 @@ def plot_motility_comparisson_regime(analysis_dict, regime_sid, mode, stat):
 
             plot_df = pd.DataFrame(param_dict)
 
-            if mode == 'bar':
-                sns.barplot(data=plot_df, x='group', y='val', ax=ax_ij)
-            else:
-                sns.violinplot(x='group', y='val', data=plot_df, cut=0, ax=ax_ij)
+            types = list(set(plot_df['group']))
+            if len(types) != 0:
+                if mode == 'bar':
+                    sns.barplot(data=plot_df, x='group', y='val', ax=ax_ij)
+                else:
+                    sns.violinplot(x='group', y='val', data=plot_df, cut=0, ax=ax_ij)
             # see section compare motility params, manual¶
 
-            types = list(set(plot_df['group']))
             pairs = [(p1, p2) for i, p1 in enumerate(types[:-1]) for j, p2 in enumerate(types[i + 1:])]
 
             ax_ij.set(ylabel=param_name, xlabel='')
@@ -2962,13 +2970,15 @@ def plot_acc_movement_comparisson(analysis_dict, mode, stat):
 
             plot_df = pd.DataFrame(param_dict)
 
-            if mode == 'bar':
-                sns.barplot(data=plot_df, x='group', y='val', ax=ax_ij)
-            else:
-                sns.violinplot(x='group', y='val', data=plot_df, cut=0, ax=ax_ij)
+            types = list(set(plot_df['group']))
+
+            if len(types) != 0:
+                if mode == 'bar':
+                    sns.barplot(data=plot_df, x='group', y='val', ax=ax_ij)
+                else:
+                    sns.violinplot(x='group', y='val', data=plot_df, cut=0, ax=ax_ij)
             # see section compare motility params, manual¶
 
-            types = list(set(plot_df['group']))
             pairs = [(p1, p2) for i, p1 in enumerate(types[:-1]) for j, p2 in enumerate(types[i + 1:])]
 
             ax_ij.set(ylabel=param_name, xlabel='')
@@ -3008,12 +3018,14 @@ def plot_behavior_distribution(analysis_dict):
             param_dict = param_info['val']
 
             plot_df = pd.DataFrame(param_dict)
+            n_vals = len(set(plot_df['val']))
 
-            sns.barplot(data=plot_df, x='behavior', y='val', hue='group', ax=ax_ij)
+            if n_vals != 0:
+                sns.barplot(data=plot_df, x='behavior', y='val', hue='group', ax=ax_ij)
 
-            max_val = np.max(param_dict['val'])
-            if max_val < 1:
-                ax_ij.set_ylim(0, .5 if max_val < 0.5 else 1.)
+                max_val = np.max(param_dict['val'])
+                if max_val < 1:
+                    ax_ij.set_ylim(0, .5 if max_val < 0.5 else 1.)
 
             ax_ij.set_ylabel(param_name)
             ax_ij.set_xlabel('')
@@ -3052,10 +3064,13 @@ def plot_stats_distribution(analysis_dict, mode, stat):
 
             plot_df = pd.DataFrame(param_dict)
 
-            if mode == 'bar':
-                sns.barplot(data=plot_df, x='group', y='val', ax=ax_ij)
-            else:
-                sns.violinplot(data=plot_df, x='group', y='val', bw=.25, cut=0, ax=ax_ij)
+            types = list(set(plot_df['group']))
+
+            if len(types) != 0:
+                if mode == 'bar':
+                    sns.barplot(data=plot_df, x='group', y='val', ax=ax_ij)
+                else:
+                    sns.violinplot(data=plot_df, x='group', y='val', bw=.25, cut=0, ax=ax_ij)
 
             # max_val = np.max(param_dict['val'])
 
@@ -3067,7 +3082,6 @@ def plot_stats_distribution(analysis_dict, mode, stat):
 
             ax_ij.set_title(param_sid)
 
-            types = list(set(plot_df['group']))
             pairs = [(p1, p2) for i, p1 in enumerate(types[:-1]) for j, p2 in enumerate(types[i + 1:])]
 
             ax_ij.set(ylabel=param_name, xlabel='')
@@ -3154,6 +3168,21 @@ def proc_resolve_xings(datasets_ids, datasets_dir,
     n = get_total_tracks_num(long_tracks)
     print('Total tracks:', n)
 
+    n_ok = get_total_tracks_num(ok_tracks)
+    n_long = get_total_tracks_num(long_tracks)
+    print(f'OK tracks:{n_ok}, long tracks:{n_long}')
+
+    n_long_fv = get_total_tracks_num(long_tracks_fv)
+    n_all_fv = get_total_tracks_num(all_tracks_fv)
+    n_long_phf = get_total_tracks_num(long_tracks_phf)
+    n_long_fv_phf = get_total_tracks_num(long_tracks_fv_phf)
+    n_all_phf = get_total_tracks_num(all_tracks_phf)
+    n_all_fv_phf = get_total_tracks_num(all_tracks_fv_phf)
+    print(f'FV: long:{n_long_fv}, all:{n_all_fv}')
+    print(f'PHF: long:{n_long_phf}, all:{n_all_phf}')
+    print(f'FV+PHF: long:{n_long_fv_phf}, all:{n_all_fv_phf}')
+
+
     return (long_tracks_fv, all_tracks_fv,
             long_tracks_phf, long_tracks_fv_phf,
             all_tracks_phf, all_tracks_fv_phf,
@@ -3214,16 +3243,17 @@ def proc_analyze_tracks(all_tracks_fv_phf, long_tracks_fv_phf, all_tracks_fv,
             tas = load_pckl(tas_filename)
         else:
             trx, trx_long, trx_all = all_tracks_fv_phf[ds_id], long_tracks_fv_phf[ds_id], all_tracks_fv[ds_id]
+            print(f'processing dataset {ds_id} with {len(trx)} tracks, {len(trx_long)} long tracks, {len(trx_all)} all tracks')
 
             n_ch = NeighborhoodChecker(neighbour_effect_radius)
             n_ch.fill_container_points(trx_all)
 
             TrackAnalyzer.reset()
 
-            tf_max = np.max([t.get_last_time() for t in trx] if len(trx) else [0])
+            tf_max = np.max([t.get_last_time() for t in trx] if len(trx) else [cfgm.T_ACCUMULATION_END])
             
             prob_dr = cfgm.PROBING_MAX_DISPLACEMENT * np.sqrt((tf_max - cfgm.T_ACCUMULATION_END + 1.) / (198-33))
-            print(f'used probing dr{prob_dr}')
+            print(f'used probing_dr={prob_dr}')
 
             n_ok = 0
             eff = 0.
@@ -3260,7 +3290,7 @@ def proc_analyze_tracks(all_tracks_fv_phf, long_tracks_fv_phf, all_tracks_fv,
 
             save_pckl(tas, tas_filename)
 
-            print('dataset', ds_id, f'n_ok={n_ok}, n_tot={len(trx)}, n_long={len(trx_long)}, eff_long={eff}')
+            print('dataset', ds_id, f'n_ok={n_ok}, n_tot={len(trx)}, n_long={len(trx_long)}, n_all={len(trx_all)}, eff_long={eff}')
             n_nac = np.sum((np.array(errs) & 2)>0)
             n_diap_ineff = np.sum((np.array(errs) & 4)>0)
             n_tr_ineff = np.sum((np.array(errs) & 8)>0)

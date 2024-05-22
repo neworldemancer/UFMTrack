@@ -5724,6 +5724,10 @@ class Track:
     def set_fiducial_boundary(boundary_x0x1y0y1):
         Track._boundary_x0x1y0y1 = boundary_x0x1y0y1
 
+    @staticmethod
+    def get_fiducial_boundary():
+        return Track._boundary_x0x1y0y1
+
     def __init__(self, segment: TSegment = None):
         self.segments = []
         # self.connection_ids = set()  # in connections
@@ -6787,10 +6791,12 @@ class Xings:
         # self.xings_id_at_time = {}  # time-> {track_id->xing_id}
         self.track_xing_dict = {}  # track id -> list of xing ids
 
-        self.get_boundary()
+        boundary = self.get_boundary(self.tracks)
+        self.set_boundary(boundary)
 
-    def get_boundary(self):
-        def get_boudary_range(n: Node, t, x0x1y0y1_n: list):
+    @staticmethod
+    def get_boundary(tracks):
+        def get_boundary_range(n: Node, t, x0x1y0y1_n: list):
             x, y = n.r[:2]
             if x0x1y0y1_n[-1] == 0:
                 x0x1y0y1_n[0] = x0x1y0y1_n[1] = x
@@ -6808,13 +6814,19 @@ class Xings:
         x0x1y0y1_n = [0.] * 4 + [0]
 
         # t1 = timer()
-        for tr in self.tracks:
-            x0x1y0y1_n = tr.aggregate_nodes(get_boudary_range, x0x1y0y1_n)
+        for tr in tracks:
+            x0x1y0y1_n = tr.aggregate_nodes(get_boundary_range, x0x1y0y1_n)
         # t2 = timer()
         # print('boundary search took %.3fs' % (t2-t1), x0x1y0y1_n)
+        # print('boundary search ', x0x1y0y1_n)
 
         x0x1y0y1 = x0x1y0y1_n[:4]
+        return x0x1y0y1
+
+    @staticmethod
+    def set_boundary(x0x1y0y1):
         Track.set_fiducial_boundary(x0x1y0y1)
+
 
     def track_get_xing_in_out(self, tr_id, t):
         tr = self.tracks[tr_id]
