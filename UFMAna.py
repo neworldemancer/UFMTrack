@@ -2383,10 +2383,22 @@ def ta_to_am_dx(ta: TrackAnalyzer):
 def ta_to_am_v(ta: TrackAnalyzer):
     return [(dx / dt * cfgm.DT / 60.) for (dx, dy, dz), dt in ta.jumps_dr3_dt if dx < 0]
 
+def ta_to_am_dx_track(ta: TrackAnalyzer):
+    return np.sum([dx for (dx, dy, dz), dt in ta.jumps_dr3_dt if dx < 0])
+
+
+def ta_to_am_v_track(ta: TrackAnalyzer):
+    dx = ta_to_am_dx_track(ta)
+    dt = np.sum([dt for (dx, dy, dz), dt in ta.jumps_dr3_dt if dx < 0])
+    return dx / dt * cfgm.DT / 60.
+
+
 
 am_params = {
     0: {'id': 'disp_am', 'name': 'AM Displacement, $\\mu m$', 'fn': ta_to_am_dx},
-    1: {'id': 'v_am', 'name': 'AM  speed, $\\mu m/min$', 'fn': ta_to_am_v},
+    1: {'id': 'v_am', 'name': 'AM speed, $\\mu m/min$', 'fn': ta_to_am_v},
+    2: {'id': 'disp_am_track', 'name': 'AM Track Displacement, $\\mu m$', 'fn': ta_to_am_dx_track},
+    3: {'id': 'v_am_track', 'name': 'AM Track speed, $\\mu m/min$', 'fn': ta_to_am_v_track},
 }
 
 
@@ -2506,6 +2518,8 @@ def get_acc_movement_analytics_value_dict(tas_dict, comparisson_group, condition
             for ta in tas_dict.get(ds_id, []):  # tas might be limited
                 if ta.is_ok:  # checl has data
                     vals = val_fn(ta)
+                    if not isinstance(vals, list):
+                        vals = [vals]  # for single values per tracks
                     for val in vals:
                         analytics_dict['group'].append(group_name)
                         analytics_dict['val'].append(val)
