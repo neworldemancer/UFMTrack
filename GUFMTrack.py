@@ -8896,265 +8896,276 @@ def plot_track_doc(tr=None, tsdocs=None):
 ##################################################################
 
 
-def track_dataset(cells_filename='tr_cells_tmp.dat'):
-    # prepare & wait to start
+def track_dataset(cells_filename='tr_cells_tmp.dat', ds_root='.'):
+    # 1. get full path to ds_root:
+    ds_root = os.path.abspath(ds_root)
+    # 2. cet current working directory
+    curr_dir = os.getcwd()
+    # cd to ds_root
+    os.chdir(ds_root)
+
+    try:
+        # prepare & wait to start
 
 
-    make_image_dirs()
-    wait_to_start()
-    proc_start_t = timer()
+        make_image_dirs()
+        wait_to_start()
+        proc_start_t = timer()
 
-    # ## Cell linking
+        # ## Cell linking
 
-    # load file
-    cells_merged, cells_full = load_cells(cells_filename)
-    save_cell_for_display(cells_ds=cells_merged)
+        # load file
+        cells_merged, cells_full = load_cells(cells_filename)
+        save_cell_for_display(cells_ds=cells_merged)
 
-    st_merged = Stack(cells_merged)
-    st_full = Stack(cells_full)
+        st_merged = Stack(cells_merged)
+        st_full = Stack(cells_full)
 
-    # ### Merging neighbouring cells
+        # ### Merging neighbouring cells
 
-    # get and plot distribution of dr<50um:
-    # plot_neighbour_cell_count_distrinution(st_full, dr_max=50)
+        # get and plot distribution of dr<50um:
+        # plot_neighbour_cell_count_distrinution(st_full, dr_max=50)
 
-    # get_cell_merge_groups(st_full, 20);
-    # merge_groups_sc, remove_mc = get_subcell_merge_groups(st_full, 20)
-    # cells_merged_n, cells_full_n = merge_cell_groups(cells_full, merge_groups_sc, remove_mc)
+        # get_cell_merge_groups(st_full, 20);
+        # merge_groups_sc, remove_mc = get_subcell_merge_groups(st_full, 20)
+        # cells_merged_n, cells_full_n = merge_cell_groups(cells_full, merge_groups_sc, remove_mc)
 
-    # process: merge cells within _CELL_FUSE_RADIUS um and make new stacks
-    cells_merged_n, cells_full_n = merge_nearby_cells(st_full, cells_full, dr_max=cfgm.CELL_FUSE_RADIUS)
+        # process: merge cells within _CELL_FUSE_RADIUS um and make new stacks
+        cells_merged_n, cells_full_n = merge_nearby_cells(st_full, cells_full, dr_max=cfgm.CELL_FUSE_RADIUS)
 
-    del cells_merged
-    del cells_full
+        del cells_merged
+        del cells_full
 
-    # update main containers for new-merged cells
-    if cfgm.MERGE_CLOSE_CELLS:
-        st_merged = Stack(cells_merged_n)
-        st_full = Stack(cells_full_n)
+        # update main containers for new-merged cells
+        if cfgm.MERGE_CLOSE_CELLS:
+            st_merged = Stack(cells_merged_n)
+            st_full = Stack(cells_full_n)
 
-    save_cell_for_display(cells_ds=cells_merged_n)
+        save_cell_for_display(cells_ds=cells_merged_n)
 
-    # ### Do linking
-    # prepare solve
-    # 1 make links
-    links = make_links(max_dr=cfgm.LINKS_MAX_DR, eps=cfgm.LINKS_EPS, stack=st_merged, max_dt=3)
-    # 2 calc weights
-    links_nll = get_links_w(stack=st_merged, links=links, w_nn=cfgm.W_NN)
-    links, links_nll = discard_bad_links(links, links_nll)
+        # ### Do linking
+        # prepare solve
+        # 1 make links
+        links = make_links(max_dr=cfgm.LINKS_MAX_DR, eps=cfgm.LINKS_EPS, stack=st_merged, max_dt=3)
+        # 2 calc weights
+        links_nll = get_links_w(stack=st_merged, links=links, w_nn=cfgm.W_NN)
+        links, links_nll = discard_bad_links(links, links_nll)
 
-    # 3 solve
-    resolved_links = solve_disjoint_cached(stack=st_merged,
-                                           links=links, links_w=links_nll,
-                                           w_nc=cfgm.W_NC, w_dm=cfgm.W_DM, use_cache=cfgm.USE_CASHED)
+        # 3 solve
+        resolved_links = solve_disjoint_cached(stack=st_merged,
+                                               links=links, links_w=links_nll,
+                                               w_nc=cfgm.W_NC, w_dm=cfgm.W_DM, use_cache=cfgm.USE_CASHED)
 
-    # proc cells
-    lc_map = get_linked_cell_map(st_merged, resolved_links, links, links_nll)
+        # proc cells
+        lc_map = get_linked_cell_map(st_merged, resolved_links, links, links_nll)
 
-    # split disjointed components
-    lc_disjoint_groups = get_disjointed_groups_links(list(lc_map.keys()), resolved_links, min_grp_size=2)
+        # split disjointed components
+        lc_disjoint_groups = get_disjointed_groups_links(list(lc_map.keys()), resolved_links, min_grp_size=2)
 
-    # plot_lc_quality_info(lc_map)
+        # plot_lc_quality_info(lc_map)
 
-    # get all track starts - each is list[tuple[node_tc_idx, link]
-    all_starts, all_starts_g, all_starts_single_g = get_track_starts(lc_map, lc_disjoint_groups)
-    all_tracks_xyt, all_tracks_start_tcidx = get_track_start_info(st_merged, all_starts, lc_map)
+        # get all track starts - each is list[tuple[node_tc_idx, link]
+        all_starts, all_starts_g, all_starts_single_g = get_track_starts(lc_map, lc_disjoint_groups)
+        all_tracks_xyt, all_tracks_start_tcidx = get_track_start_info(st_merged, all_starts, lc_map)
 
-    # ### Tracks export
-    save_tracks_simple(all_tracks_xyt, 'tracks_merged.txt')
-    # plot_tracks_simple(st_merged, all_tracks_xyt)
+        # ### Tracks export
+        save_tracks_simple(all_tracks_xyt, 'tracks_merged.txt')
+        # plot_tracks_simple(st_merged, all_tracks_xyt)
 
-    # ### Study of connectivity
-    m_per_grp, groups_with_m_nodes = get_n_m_nodes_per_group(lc_map, lc_disjoint_groups)
+        # ### Study of connectivity
+        m_per_grp, groups_with_m_nodes = get_n_m_nodes_per_group(lc_map, lc_disjoint_groups)
 
-    if cfgm.SAVE_IMS:
-        plot_linked_cells_in_m_groups(groups_with_m_nodes, all_starts_g, all_starts_single_g,
-                                      all_tracks_start_tcidx, all_tracks_xyt)
-
-
-    # ## Solving for consistent picture
-
-    # ### Simplify graph
-    # replace resolved sequences with ~constant flow with "Segments", linking "vertices"
-    vtx_g, sgm_g = get_group_segments_vertices_from_links(st_merged, lc_map, all_starts_single_g)
-
-    # plot simplified segments
-
-    if cfgm.SAVE_IMS:
-        plot_segments_in_groups(st_merged,
-                                groups_with_m_nodes,
-                                all_starts_g,
-                                all_tracks_start_tcidx, all_tracks_xyt,
-                                vtx_g, sgm_g, folder='tracks_in_group_simpl')
-
-    # ### Find posible vtx: jumps on segments
-
-    # 1 find jump scale
-    dr_merge = get_all_merge_jump_dr(vtx_g, sgm_g, st_merged)
-    dr_sqrt_merge_min_is_vtx, *dr_sqrt_merge_mean_std = get_min_dr_sqrt_merge(dr_merge, plot=False)
-
-    # 2 find potentially vtx nodes on segments. for now only by jump value
-    vtx_cand_tc_idx = find_vtx_on_segments(sgm_g, st_merged, lc_map, min_sqrt_dr_candidate=dr_sqrt_merge_min_is_vtx)
+        if cfgm.SAVE_IMS:
+            plot_linked_cells_in_m_groups(groups_with_m_nodes, all_starts_g, all_starts_single_g,
+                                          all_tracks_start_tcidx, all_tracks_xyt)
 
 
-    # split segments starting from selected nodes (vtx_cand_tc_idx) - will be starting vtx
-    # repeat supplying new vtx_cand_tc_idx
-    vtx_g, sgm_g = get_group_segments_vertices_from_links(st_merged, lc_map, all_starts_single_g, vtx_cand_tc_idx)
+        # ## Solving for consistent picture
 
-    # plot simplified segments
-    if cfgm.SAVE_IMS:
-        plot_segments_in_groups(st_merged,
-                                groups_with_m_nodes,
-                                all_starts_g,
-                                all_tracks_start_tcidx, all_tracks_xyt,
-                                vtx_g, sgm_g, folder='tracks_in_group_simpl_sgm_vtx')
+        # ### Simplify graph
+        # replace resolved sequences with ~constant flow with "Segments", linking "vertices"
+        vtx_g, sgm_g = get_group_segments_vertices_from_links(st_merged, lc_map, all_starts_single_g)
 
-    # ### Solving for track continuity (flow consistency)
-    # 1 solve
-    solve_groups_flow(stack=st_merged,
-                      vtx_g=vtx_g, sgm_g=sgm_g,
-                      w_nc=cfgm.W_NC_LOC, w_f_mult_end=cfgm.W_F_MULT_END_LOC, w_f_above_est=cfgm.W_F_ABOVE_EST_LOC)
+        # plot simplified segments
 
-    # plot simplified segments, vtx on segments
-    if cfgm.SAVE_IMS:
-        plot_segments_in_groups(st_merged,
-                                groups_with_m_nodes,
-                                all_starts_g,
-                                all_tracks_start_tcidx, all_tracks_xyt,
-                                vtx_g, sgm_g, folder='tracks_in_group_simpl_flow',
-                                only_m_nodes=True, multiplicity_colors=True)
+        if cfgm.SAVE_IMS:
+            plot_segments_in_groups(st_merged,
+                                    groups_with_m_nodes,
+                                    all_starts_g,
+                                    all_tracks_start_tcidx, all_tracks_xyt,
+                                    vtx_g, sgm_g, folder='tracks_in_group_simpl')
 
-    # ### Global flow resolving
+        # ### Find posible vtx: jumps on segments
 
-    # make potential segments connecting the across jumps and merge displacements
-    vtx_tc_idx = [(vtx.t_idx, vtx.c_idx) for grp_vtx in vtx_g for vtx in grp_vtx]
-    dr_sqrt_flow_mean_std = 25, 45 / 3.5
-    vtx_merge_conns = search_vtx_conn(vtx_tc_idx, st_merged,
-                                      sgm_g,
-                                      dr_sqrt_merge_mean_std, dr_sqrt_flow_mean_std,
-                                      w_nc_0=9.)  # segment candidate search and estimation of NLL
+        # 1 find jump scale
+        dr_merge = get_all_merge_jump_dr(vtx_g, sgm_g, st_merged)
+        dr_sqrt_merge_min_is_vtx, *dr_sqrt_merge_mean_std = get_min_dr_sqrt_merge(dr_merge, plot=False)
 
-    sgm_c = get_conn_segments(vtx_merge_conns, lc_map, st_merged)  # creates segment candidate objects
-
-    vtx_g2, sgm_g2, sgm_c_g2, all_starts_g2 = get_disjointed_groups_segments(vtx_g, sgm_g, sgm_c,
-                                                                             all_starts_g,
-                                                                             only_connected_sgm=False)
-
-    # solve
-    # 1 solve
-    res = solve_groups_global_flow(stack=st_merged,
-                                   vtx_g=vtx_g2, sgm_g=sgm_g2, sgm_gc=sgm_c_g2,
-                                   w_nc=cfgm.W_NC_GLOB, w_f_mult_end=cfgm.W_F_MULT_END_GLOB,
-                                   w_f_above_est=cfgm.W_F_ABOVE_EST_GLOB)
-
-    if not res:
-        print('Global flow solving failed sor at least one group (G2)')
-
-    # plot simplified segments, vtx on segments, v g2
-    if cfgm.SAVE_IMS:
-        plot_segments_in_groups(stack=st_merged,
-                                groups_with_m_nodes=None,
-                                all_starts_g=all_starts_g2,
-                                all_tracks_start_tcidx=all_tracks_start_tcidx, all_tracks_xyt=all_tracks_xyt,
-                                vtx_g=vtx_g2, sgm_g=sgm_g2, sgm_c_g=sgm_c_g2,
-                                folder='tracks_in_group_simpl_flow_glob',
-                                only_m_nodes=False, multiplicity_colors=True)
-
-    # ### Refining global result
-    # PROD: solve iteratively with shaving, remove groups with <6 nodes in total (useless for any analysis)
+        # 2 find potentially vtx nodes on segments. for now only by jump value
+        vtx_cand_tc_idx = find_vtx_on_segments(sgm_g, st_merged, lc_map, min_sqrt_dr_candidate=dr_sqrt_merge_min_is_vtx)
 
 
-    vtx_g3, sgm_g3, sgm_c_g3, all_starts_g3 = remove_small_groups(vtx_g2, sgm_g2, sgm_c_g2, all_starts_g2)
-    sgm_g3, sgm_c_g3 = shave_and_solve_groups_global_flow(st_merged, vtx_g3, sgm_g3, sgm_c_g3)
+        # split segments starting from selected nodes (vtx_cand_tc_idx) - will be starting vtx
+        # repeat supplying new vtx_cand_tc_idx
+        vtx_g, sgm_g = get_group_segments_vertices_from_links(st_merged, lc_map, all_starts_single_g, vtx_cand_tc_idx)
+
+        # plot simplified segments
+        if cfgm.SAVE_IMS:
+            plot_segments_in_groups(st_merged,
+                                    groups_with_m_nodes,
+                                    all_starts_g,
+                                    all_tracks_start_tcidx, all_tracks_xyt,
+                                    vtx_g, sgm_g, folder='tracks_in_group_simpl_sgm_vtx')
+
+        # ### Solving for track continuity (flow consistency)
+        # 1 solve
+        solve_groups_flow(stack=st_merged,
+                          vtx_g=vtx_g, sgm_g=sgm_g,
+                          w_nc=cfgm.W_NC_LOC, w_f_mult_end=cfgm.W_F_MULT_END_LOC, w_f_above_est=cfgm.W_F_ABOVE_EST_LOC)
+
+        # plot simplified segments, vtx on segments
+        if cfgm.SAVE_IMS:
+            plot_segments_in_groups(st_merged,
+                                    groups_with_m_nodes,
+                                    all_starts_g,
+                                    all_tracks_start_tcidx, all_tracks_xyt,
+                                    vtx_g, sgm_g, folder='tracks_in_group_simpl_flow',
+                                    only_m_nodes=True, multiplicity_colors=True)
+
+        # ### Global flow resolving
+
+        # make potential segments connecting the across jumps and merge displacements
+        vtx_tc_idx = [(vtx.t_idx, vtx.c_idx) for grp_vtx in vtx_g for vtx in grp_vtx]
+        dr_sqrt_flow_mean_std = 25, 45 / 3.5
+        vtx_merge_conns = search_vtx_conn(vtx_tc_idx, st_merged,
+                                          sgm_g,
+                                          dr_sqrt_merge_mean_std, dr_sqrt_flow_mean_std,
+                                          w_nc_0=9.)  # segment candidate search and estimation of NLL
+
+        sgm_c = get_conn_segments(vtx_merge_conns, lc_map, st_merged)  # creates segment candidate objects
+
+        vtx_g2, sgm_g2, sgm_c_g2, all_starts_g2 = get_disjointed_groups_segments(vtx_g, sgm_g, sgm_c,
+                                                                                 all_starts_g,
+                                                                                 only_connected_sgm=False)
+
+        # solve
+        # 1 solve
+        res = solve_groups_global_flow(stack=st_merged,
+                                       vtx_g=vtx_g2, sgm_g=sgm_g2, sgm_gc=sgm_c_g2,
+                                       w_nc=cfgm.W_NC_GLOB, w_f_mult_end=cfgm.W_F_MULT_END_GLOB,
+                                       w_f_above_est=cfgm.W_F_ABOVE_EST_GLOB)
+
+        if not res:
+            print('Global flow solving failed sor at least one group (G2)')
+
+        # plot simplified segments, vtx on segments, v g2
+        if cfgm.SAVE_IMS:
+            plot_segments_in_groups(stack=st_merged,
+                                    groups_with_m_nodes=None,
+                                    all_starts_g=all_starts_g2,
+                                    all_tracks_start_tcidx=all_tracks_start_tcidx, all_tracks_xyt=all_tracks_xyt,
+                                    vtx_g=vtx_g2, sgm_g=sgm_g2, sgm_c_g=sgm_c_g2,
+                                    folder='tracks_in_group_simpl_flow_glob',
+                                    only_m_nodes=False, multiplicity_colors=True)
+
+        # ### Refining global result
+        # PROD: solve iteratively with shaving, remove groups with <6 nodes in total (useless for any analysis)
 
 
-    # plot simplified segments, vtx on segments, v g3
-    if cfgm.SAVE_IMS:
-        plot_seg_flow(vtx_g3, sgm_g3, sgm_c_g3, all_starts_g3, st_merged, all_tracks_start_tcidx, all_tracks_xyt, saveto='tracks_in_group_simpl_flow_glob_shaved\\')
-        plot_seg_flow_change_dist(sgm_g3, saveto='seg_flow_change_hist.png')
-
-    # ## Resolving crossings
-
-    # ### Extract joined segments
-
-    # 0. regroup, and merge all segments in one collection (all are approved)
-    vtx_g4, sgm_g4, sgm_c_g4, all_starts_g4 = get_disjointed_groups_segments(vtx_g3, sgm_g3, sgm_c_g3,
-                                                                             all_starts_g3,
-                                                                             only_connected_sgm=True)
-
-    vtx_g4, sgm_g4, sgm_c_g4, all_starts_g4 = merge_selected_potential_segments(vtx_g4, sgm_g4, sgm_c_g4, all_starts_g4)
-    del sgm_c_g4
-
-    # sgm_xg - segments within crossing, sgm_1g - between
-    vtx_xg, sgm_xg, sgm_1g = restructure_segments_grps(vtx_g=vtx_g4, sgm_g=sgm_g4, stack=st_merged)
-
-    # plot simplified segments, vtx on segments, v xg
-    if cfgm.SAVE_IMS:
-        plot_xing_segs(vtx_xg, sgm_xg, sgm_1g, all_starts_g4, st_merged, all_tracks_start_tcidx, all_tracks_xyt,
-                       saveto='tracks_in_group_simpl_flow_glob_xing_ready')
-
-    # ### Extend free segments to merged nodes in vtx/crossing segments
-    # This section operates on a different other_cell stack than before:
-    # with both m-cells and subcells in the collection.
-    # This operation invalidates the `lc_map` on the `sgm` objects: different combined m-cells are made,
-    # and the lc-map is not updated, since other_cell links aren't used anymore
-
-    pickle_svs(st_merged, st_full, vtx_xg, sgm_xg, sgm_1g, sfx='pre_ext')
-    # st_merged, st_full, vtx_xg, sgm_xg, sgm_1g = load_svs(sfx='pre_ext')
-
-    save_tracks_for_display_from_sgm_vtx(stack=st_merged,
-                                         vtx_xg=vtx_xg, sgm_xg=sgm_xg, sgm_1g=sgm_1g,
-                                         fname='disp_tracks_pre_xing_ext.pckl')
-
-    se = SegmentExtender(st_full, vtx_xg, sgm_xg, sgm_1g)
-    vtx_xg, sgm_xg, sgm_1g = se.extend_all_outer_segments_iter()
-
-    pickle_svs(st_merged, st_full, vtx_xg, sgm_xg, sgm_1g)
-    # st_merged, st_full, vtx_xg, sgm_xg, sgm_1g = load_svs()
-
-    save_tracks_for_display_from_sgm_vtx(stack=st_full,
-                                         vtx_xg=vtx_xg, sgm_xg=sgm_xg, sgm_1g=sgm_1g,
-                                         fname='disp_tracks_post_xing_ext.pckl')
-
-    # plot simplified segments, vtx on segments, v xg
-    if cfgm.SAVE_IMS:
-        plot_xing_segs(vtx_xg, sgm_xg, sgm_1g, all_starts_g4, st_full, all_tracks_start_tcidx, all_tracks_xyt,
-                       saveto='tracks_in_group_simpl_flow_glob_xing_ext')
-
-    # explore_unused_cells_draft(st_full, vtx_xg, sgm_xg, sgm_1g)  # didn't lead wnywhere so far
+        vtx_g3, sgm_g3, sgm_c_g3, all_starts_g3 = remove_small_groups(vtx_g2, sgm_g2, sgm_c_g2, all_starts_g2)
+        sgm_g3, sgm_c_g3 = shave_and_solve_groups_global_flow(st_merged, vtx_g3, sgm_g3, sgm_c_g3)
 
 
-    # # ### Convert to format for merger and run merging
-    # xing0 = convert_to_xings(stack=st_full, vtx_xg=vtx_xg, sgm_xg=sgm_xg, sgm_1g=sgm_1g)
-    #
-    # # fill pm matrix
-    # slv0 = Solver(xing0)
-    # slv0.solve(None,  # plot_state,
-    #            lap_only=True, priors_set=False,
-    #            pm_mtr=None,
-    #            stop_after_init=True)
-    # pm_mtr_bk = slv0.pm.mtr
-    #
-    # # resolve crossings
-    # # st_merged, st_full, vtx_xg, sgm_xg, sgm_1g = load_svs()
-    # xing2 = convert_to_xings(stack=st_full, vtx_xg=vtx_xg, sgm_xg=sgm_xg, sgm_1g=sgm_1g)
-    #
-    # slv2 = Solver(xing2)
-    # slv2.solve(None,  # plot_state,
-    #            lap_only=True, priors_set=False,
-    #            pm_mtr=pm_mtr_bk,
-    #            stop_after_init=False,
-    #            remove_short=False
-    #            )
-    #
-    # save_tracks_for_display_from_solver(slv2, 'disp_tracks_slv_lap.pckl')
-    #
-    # print('check_solution_ok', check_solution_ok(slv2))
+        # plot simplified segments, vtx on segments, v g3
+        if cfgm.SAVE_IMS:
+            plot_seg_flow(vtx_g3, sgm_g3, sgm_c_g3, all_starts_g3, st_merged, all_tracks_start_tcidx, all_tracks_xyt, saveto='tracks_in_group_simpl_flow_glob_shaved\\')
+            plot_seg_flow_change_dist(sgm_g3, saveto='seg_flow_change_hist.png')
 
-    # ## closing part
-    proc_end_t = timer()
-    print(f'notebook run time: {(proc_end_t - proc_start_t):.2f} sec')
-    set_proc_end()
+        # ## Resolving crossings
+
+        # ### Extract joined segments
+
+        # 0. regroup, and merge all segments in one collection (all are approved)
+        vtx_g4, sgm_g4, sgm_c_g4, all_starts_g4 = get_disjointed_groups_segments(vtx_g3, sgm_g3, sgm_c_g3,
+                                                                                 all_starts_g3,
+                                                                                 only_connected_sgm=True)
+
+        vtx_g4, sgm_g4, sgm_c_g4, all_starts_g4 = merge_selected_potential_segments(vtx_g4, sgm_g4, sgm_c_g4, all_starts_g4)
+        del sgm_c_g4
+
+        # sgm_xg - segments within crossing, sgm_1g - between
+        vtx_xg, sgm_xg, sgm_1g = restructure_segments_grps(vtx_g=vtx_g4, sgm_g=sgm_g4, stack=st_merged)
+
+        # plot simplified segments, vtx on segments, v xg
+        if cfgm.SAVE_IMS:
+            plot_xing_segs(vtx_xg, sgm_xg, sgm_1g, all_starts_g4, st_merged, all_tracks_start_tcidx, all_tracks_xyt,
+                           saveto='tracks_in_group_simpl_flow_glob_xing_ready')
+
+        # ### Extend free segments to merged nodes in vtx/crossing segments
+        # This section operates on a different other_cell stack than before:
+        # with both m-cells and subcells in the collection.
+        # This operation invalidates the `lc_map` on the `sgm` objects: different combined m-cells are made,
+        # and the lc-map is not updated, since other_cell links aren't used anymore
+
+        pickle_svs(st_merged, st_full, vtx_xg, sgm_xg, sgm_1g, sfx='pre_ext')
+        # st_merged, st_full, vtx_xg, sgm_xg, sgm_1g = load_svs(sfx='pre_ext')
+
+        save_tracks_for_display_from_sgm_vtx(stack=st_merged,
+                                             vtx_xg=vtx_xg, sgm_xg=sgm_xg, sgm_1g=sgm_1g,
+                                             fname='disp_tracks_pre_xing_ext.pckl')
+
+        se = SegmentExtender(st_full, vtx_xg, sgm_xg, sgm_1g)
+        vtx_xg, sgm_xg, sgm_1g = se.extend_all_outer_segments_iter()
+
+        pickle_svs(st_merged, st_full, vtx_xg, sgm_xg, sgm_1g)
+        # st_merged, st_full, vtx_xg, sgm_xg, sgm_1g = load_svs()
+
+        save_tracks_for_display_from_sgm_vtx(stack=st_full,
+                                             vtx_xg=vtx_xg, sgm_xg=sgm_xg, sgm_1g=sgm_1g,
+                                             fname='disp_tracks_post_xing_ext.pckl')
+
+        # plot simplified segments, vtx on segments, v xg
+        if cfgm.SAVE_IMS:
+            plot_xing_segs(vtx_xg, sgm_xg, sgm_1g, all_starts_g4, st_full, all_tracks_start_tcidx, all_tracks_xyt,
+                           saveto='tracks_in_group_simpl_flow_glob_xing_ext')
+
+        # explore_unused_cells_draft(st_full, vtx_xg, sgm_xg, sgm_1g)  # didn't lead wnywhere so far
+
+
+        # # ### Convert to format for merger and run merging
+        # xing0 = convert_to_xings(stack=st_full, vtx_xg=vtx_xg, sgm_xg=sgm_xg, sgm_1g=sgm_1g)
+        #
+        # # fill pm matrix
+        # slv0 = Solver(xing0)
+        # slv0.solve(None,  # plot_state,
+        #            lap_only=True, priors_set=False,
+        #            pm_mtr=None,
+        #            stop_after_init=True)
+        # pm_mtr_bk = slv0.pm.mtr
+        #
+        # # resolve crossings
+        # # st_merged, st_full, vtx_xg, sgm_xg, sgm_1g = load_svs()
+        # xing2 = convert_to_xings(stack=st_full, vtx_xg=vtx_xg, sgm_xg=sgm_xg, sgm_1g=sgm_1g)
+        #
+        # slv2 = Solver(xing2)
+        # slv2.solve(None,  # plot_state,
+        #            lap_only=True, priors_set=False,
+        #            pm_mtr=pm_mtr_bk,
+        #            stop_after_init=False,
+        #            remove_short=False
+        #            )
+        #
+        # save_tracks_for_display_from_solver(slv2, 'disp_tracks_slv_lap.pckl')
+        #
+        # print('check_solution_ok', check_solution_ok(slv2))
+
+        # ## closing part
+        proc_end_t = timer()
+        print(f'notebook run time: {(proc_end_t - proc_start_t):.2f} sec')
+        set_proc_end()
+    finally:
+        # change working dir back to original
+        os.chdir(curr_dir)
 
 if __name__ == '__main__':
     track_dataset()

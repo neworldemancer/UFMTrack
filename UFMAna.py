@@ -288,7 +288,7 @@ def get_priors_from_datasets(datasets_ids, path='.'):
     Assumes datasets in folders `path/ds_id`
     """
 
-    ds_path_tmpl = os.path.join(path, '%d')
+    ds_path_tmpl = os.path.join(path, '%03d')
 
     all_ds_tracks = []
     for ds_id in datasets_ids:
@@ -309,7 +309,8 @@ def get_priors_from_datasets(datasets_ids, path='.'):
 
 
 def resolve_track_xings_datasets(datasets_ids, priors, path='.', skip_processed=True):
-    ds_path_tmpl = os.path.join(path, '%d')
+    # pad till 3 digits with zero
+    ds_path_tmpl = os.path.join(path, '%03d')
 
     resolved_tracks = {}
 
@@ -328,6 +329,7 @@ def resolve_track_xings_datasets(datasets_ids, priors, path='.', skip_processed=
             tracks = load_pckl(tracks_filename)
             skipped_ids.append(ds_id)
         else:
+            print(f'tracks_filename = {tracks_filename} doesn\'t exist.')
             l_st_merged, l_st_full, l_vtx_xg, l_sgm_xg, l_sgm_1g = load_svs(path=ds_path_tmpl % ds_id)
 
             # standard: process all groups jointly
@@ -2829,7 +2831,7 @@ def save_detachment_rois(tas_dict, datasets_dir):
                 ys.append(y)
                 ts.append(t)
                 ns.append(f'{tr_idx:04d}_{x:.1f}_{y:.1f}_{t:03d}')
-        fname = os.path.join(datasets_dir, f'{ds_id}', 'detachment_RoiSet.zip')
+        fname = os.path.join(datasets_dir, f'{ds_id:03d}', 'detachment_RoiSet.zip')
         save_roi_array(xs, ys, ts, fname=fname, names=ns)
 
 
@@ -3252,7 +3254,7 @@ def proc_analyze_tracks(all_tracks_fv_phf, long_tracks_fv_phf, all_tracks_fv,
 
     tas_all = {}
     for ds_id in all_tracks_fv_phf:
-        tas_filename = os.path.join(datasets_dir, f'{ds_id}', 'tracks.tas')
+        tas_filename = os.path.join(datasets_dir, f'{ds_id:03d}', 'tracks.tas')
         if skip_processed and os.path.exists(tas_filename):
             tas = load_pckl(tas_filename)
         else:
