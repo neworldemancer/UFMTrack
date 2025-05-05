@@ -1,0 +1,6 @@
+conda create -n ortools python=3.10 numpy=1.24 -y
+conda activate ortools
+conda install -c conda-forge ipywidgets pandas scikit-learn scipy roifile seaborn tqdm statannotations jupyterlab
+
+pip install ortools==9.*
+

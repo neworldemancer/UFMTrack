@@ -47,7 +47,16 @@ from scipy import stats
 from scipy.sparse import csr_matrix
 from scipy.sparse.csgraph import connected_components
 
-from ortools.graph import pywrapgraph as pg
+#from ortools.graph import pywrapgraph as pg
+try:
+    from ortools.graph import pywrapgraph as pg
+    LinearSumAssignment = pg.LinearSumAssignment
+    SimpleMinCostFlow = pg.SimpleMinCostFlow
+    
+except ImportError as e:
+    from ortools.graph.python.min_cost_flow import SimpleMinCostFlow
+    from ortools.graph.python.linear_sum_assignment import SimpleLinearSumAssignment as LinearSumAssignment 
+    
 from ortools.sat.python import cp_model
 
 from matplotlib import pyplot as plt
@@ -64,6 +73,13 @@ from config_manager import ConfigManager as Cfg
 
 cfgm = Cfg()
 
+def monkeypatch_if_needed():
+    if hasattr(cp_model.LinearExpr, 'WeightedSum') and not hasattr(cp_model.LinearExpr, 'ScalProd'):
+        # Monkey-patch ScalProd to call WeightedSum for backward compatibility
+        def ScalProd(vars, coeffs):
+            return cp_model.LinearExpr.WeightedSum(vars, coeffs)
+
+        cp_model.LinearExpr.ScalProd = staticmethod(ScalProd)
 
 def load_pckl(file_name, path=None):
     if path is not None:
@@ -5030,7 +5046,7 @@ class FlowSolver:
             chi2_i = int(chi2_i) + 1
             fill(idx1, idx2, chi2_i)
 
-        min_cost_flow = pg.SimpleMinCostFlow()
+        min_cost_flow = SimpleMinCostFlow()
 
         # print(self._start_nodes)
         # print(self._end_nodes)
@@ -5358,7 +5374,7 @@ class LAPSolver:
 
         # chi2_i = (chi2 - chi_min) / d_chi * 100000
 
-        min_cost_asgn = pg.LinearSumAssignment()
+        min_cost_asgn = LinearSumAssignment()
         self.min_cost_asgn = min_cost_asgn
 
         # print(self._start_nodes)
@@ -8897,6 +8913,7 @@ def plot_track_doc(tr=None, tsdocs=None):
 
 
 def track_dataset(cells_filename='tr_cells_tmp.dat', ds_root='.'):
+    monkeypatch_if_needed()
     # 1. get full path to ds_root:
     ds_root = os.path.abspath(ds_root)
     # 2. cet current working directory

@@ -183,7 +183,17 @@ def sync_analysis_datasets(da_cfg: DataAnalysisConfig):
 
         # 4. update the db
         if ds_id not in ds_db_df['ds_id'].values:
-            ds_db_df = ds_db_df.append({'ds_id': ds_id, 'ds_name': ds_name, 'accumulation_end_frame': 30, 'has_endothelium': 'yes'}, ignore_index=True)
+            #ds_db_df = ds_db_df.append({'ds_id': ds_id, 'ds_name': ds_name, 'accumulation_end_frame': 30, 'has_endothelium': 'yes'}, ignore_index=True)
+            ds_db_df = pd.concat([
+                ds_db_df,
+                pd.DataFrame([{
+                    'ds_id': ds_id,
+                    'ds_name': ds_name,
+                    'accumulation_end_frame': 30,
+                    'has_endothelium': 'yes'
+                }])
+            ], ignore_index=True)
+
 
             print(f' <- db record added', end='')
             db_updated = True
@@ -805,7 +815,12 @@ def save_study_info(study_info:StudyInfo, da_cfg: DataAnalysisConfig):
 
     # print(new_row)
 
-    ana_db_df = ana_db_df.append(new_row, ignore_index=True)
+    #ana_db_df = ana_db_df.append(new_row, ignore_index=True)
+    ana_db_df = pd.concat([
+        ana_db_df,
+        pd.DataFrame([new_row])
+    ], ignore_index=True)
+
 
     ana_db_df.to_csv(da_cfg.ana_db_path, index=False)
 
